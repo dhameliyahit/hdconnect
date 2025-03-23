@@ -11,18 +11,20 @@
 
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white flex flex-col h-screen">
 
-    <div id="joinScreen" class="flex flex-col items-center justify-center flex-1 text-center p-4">
+    <div id="joinScreen" class="flex border rounded-lg shadow-lg flex-col items-center justify-center flex-1 text-center p-4 hidden">
         <h1 class="text-2xl font-bold mb-4">Join Chat</h1>
-        <input id="username" class="border p-2 rounded w-64 dark:bg-gray-800 dark:border-gray-600"
-            placeholder="Enter your name">
-        <button onclick="register()" class="bg-blue-500 text-white p-2 rounded mt-2">Join</button>
+        <input id="username" class="border p-2 rounded w-64 dark:bg-gray-800 dark:border-gray-600" placeholder="Enter your name">
+        <button onclick="register()" class="bg-blue-500 px-9 my-2 text-white p-2 rounded mt-2">Join</button>
     </div>
 
-    <div id="chatScreen"
-        class="hidden flex flex-col flex-1 w-full max-w-md mx-auto p-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+    <div id="chatScreen" class="hidden flex flex-col flex-1 w-full max-w-md mx-auto p-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
         <div class="flex justify-between items-center mb-2">
             <h2 class="text-xl font-semibold">Chat & File Sharing</h2>
-            <button onclick="toggleDarkMode()" class="bg-gray-600 text-white px-3 py-2 rounded">🌙</button>
+            <div>
+                <span id="currentUsername" class="font-semibold text-blue-500"></span>
+                <button onclick="changeUsername()" class="ml-2 text-sm text-red-500 underline">Change</button>
+                <button onclick="toggleDarkMode()" class="bg-gray-600 text-white px-3 py-2 rounded ml-2">🌙</button>
+            </div>
         </div>
 
         <div class="flex space-x-2 mb-2">
@@ -31,13 +33,10 @@
             </select>
         </div>
 
-        <div id="messages"
-            class="flex-1 h-64 overflow-y-auto p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
-        </div>
+        <div id="messages" class="flex-1 h-64 overflow-y-auto p-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600"></div>
 
         <div class="flex mt-2 space-x-2">
-            <input id="message" class="flex-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
-                placeholder="Type a message">
+            <input id="message" class="flex-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600" placeholder="Type a message">
             <button onclick="sendMessage()" class="bg-blue-500 text-white px-3 py-2 rounded">Send</button>
         </div>
 
@@ -49,14 +48,40 @@
 
     <script>
         const socket = io();
-        let myUsername = "";
+        let myUsername = localStorage.getItem("username") || "";
+
+        function checkUsername() {
+            if (myUsername) {
+                showChat();
+            } else {
+                document.getElementById("joinScreen").classList.remove("hidden");
+            }
+        }
 
         function register() {
-            myUsername = document.getElementById("username").value;
+            myUsername = document.getElementById("username").value.trim();
             if (!myUsername) return;
-            socket.emit("register", myUsername);
+
+            localStorage.setItem("username", myUsername);
+            showChat();
+        }
+
+        function showChat() {
             document.getElementById("joinScreen").classList.add("hidden");
             document.getElementById("chatScreen").classList.remove("hidden");
+            document.getElementById("currentUsername").innerText = myUsername;
+            socket.emit("register", myUsername);
+            loadMessages();
+        }
+
+        function changeUsername() {
+            let newName = prompt("Enter your new name:", myUsername);
+            if (newName && newName.trim() !== myUsername) {
+                myUsername = newName.trim();
+                localStorage.setItem("username", myUsername);
+                document.getElementById("currentUsername").innerText = myUsername;
+                socket.emit("register", myUsername);
+            }
         }
 
         socket.on("updateUsers", (users) => {
@@ -82,9 +107,14 @@
         }
 
         socket.on("message", ({ sender, text }) => {
+            addMessage(sender, text);
+        });
+
+        function addMessage(sender, text) {
             const messageBox = document.getElementById("messages");
             let messageElement = document.createElement("div");
             messageElement.classList.add("p-2", "rounded-lg", "mb-1", "max-w-xs", "break-words");
+
             if (sender === myUsername) {
                 messageElement.classList.add("bg-blue-500", "text-white", "self-end", "ml-auto");
             } else {
@@ -93,7 +123,11 @@
             messageElement.innerHTML = `<strong>${sender}:</strong> ${text}`;
             messageBox.appendChild(messageElement);
             messageBox.scrollTop = messageBox.scrollHeight;
-        });
+
+            let messages = JSON.parse(localStorage.getItem("chatMessages")) || [];
+            messages.push({ sender, text });
+            localStorage.setItem("chatMessages", JSON.stringify(messages));
+        }
 
         function sendFile() {
             const fileInput = document.getElementById("fileInput");
@@ -110,9 +144,8 @@
                     fileData: reader.result
                 });
             };
-            reader.readAsArrayBuffer(file); // Read as ArrayBuffer for better efficiency
+            reader.readAsArrayBuffer(file);
         }
-
 
         socket.on("receiveFile", ({ sender, fileName, fileType, fileData }) => {
             const messageBox = document.getElementById("messages");
@@ -124,22 +157,24 @@
 
             if (fileType.includes("image")) {
                 messageElement.innerHTML = `<strong>${sender} sent:</strong><br><img src="${blobUrl}" alt="${fileName}" class="max-w-full h-auto rounded-lg mt-2">`;
-            } else if (fileType.includes("pdf")) {
-                messageElement.innerHTML = `<strong>${sender} sent:</strong> <a href="${blobUrl}" target="_blank" class="text-blue-500 underline">${fileName}</a>`;
             } else {
-                messageElement.innerHTML = `<strong>${sender} sent:</strong> <a href="${blobUrl}" download="${fileName}" class="text-blue-500 underline">${fileName}</a>`;
+                messageElement.innerHTML = `<strong>${sender} sent:</strong> <a href="${blobUrl}" target="_blank" class="text-blue-500 underline">${fileName}</a>`;
             }
 
             messageBox.appendChild(messageElement);
             messageBox.scrollTop = messageBox.scrollHeight;
         });
 
-
+        window.onload = checkUsername;
         function toggleDarkMode() {
             document.body.classList.toggle("dark");
         }
+
+        window.addEventListener("beforeunload", (event) => {
+            event.preventDefault();
+            event.returnValue = "Are you sure you want to leave? Your messages may be lost.";
+        });
     </script>
 
 </body>
-
 </html>
