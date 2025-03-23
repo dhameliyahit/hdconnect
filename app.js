@@ -12,7 +12,7 @@ app.get("/",(req,res)=>{
 
 
 
-app.use(express.static(path.join(__dirname, "public"))); // Serve frontend files
+app.use(express.static(path.join(__dirname, "client"))); // Serve frontend files
 
 let users = {}; // Store connected users
 
